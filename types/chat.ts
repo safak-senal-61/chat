@@ -8,7 +8,7 @@ export interface User {
 }
 
 export interface Room {
-  id: string;
+  id:string;
   name: string;
   avatar: string;
   lastMessage: string;
@@ -72,7 +72,7 @@ export interface ScheduledMessage {
   sender: User;
 }
 
-// New types for calling feature
+// Görüntülü arama özelliği için yeni tipler
 export interface CallState {
   isActive: boolean;
   type: 'voice' | 'video';

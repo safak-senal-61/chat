@@ -1,60 +1,50 @@
 "use client";
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, RefObject } from 'react';
 import { 
-  Phone, 
   PhoneOff, 
-  Video, 
-  VideoOff, 
   Mic, 
   MicOff, 
+  Video, 
+  VideoOff, 
   Monitor,
-  Minimize2,
-  Maximize2,
   Settings
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { CallState, User } from '@/types/chat';
+import { CallState } from '@/types/chat';
 import { cn } from '@/lib/utils';
 
+// 1. Props arayüzünü Agora mimarisine göre güncelliyoruz
 interface CallInterfaceProps {
   callState: CallState;
-  localVideoRef: React.RefObject<HTMLVideoElement>;
-  remoteVideoRef: React.RefObject<HTMLVideoElement>;
+  localVideoRef: RefObject<HTMLVideoElement>;
+  remoteVideoContainerRef: RefObject<HTMLDivElement>; // Artık bu bir container referansı
   onEndCall: () => void;
   onToggleVideo: () => void;
   onToggleAudio: () => void;
   onStartScreenShare: () => void;
-  isConnecting: boolean;
-  connectionState: RTCPeerConnectionState;
 }
 
 export function CallInterface({
   callState,
   localVideoRef,
-  remoteVideoRef,
+  remoteVideoContainerRef, // remoteVideoRef yerine bunu kullanıyoruz
   onEndCall,
   onToggleVideo,
   onToggleAudio,
   onStartScreenShare,
-  isConnecting,
-  connectionState
 }: CallInterfaceProps) {
   const [isVideoEnabled, setIsVideoEnabled] = useState(callState.type === 'video');
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [isMinimized, setIsMinimized] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
 
-  // Calculate call duration
+  // Çağrı süresini hesapla
   useEffect(() => {
     if (callState.isActive && callState.startTime) {
       const interval = setInterval(() => {
-        const start = new Date(callState.startTime!).getTime();
-        const now = new Date().getTime();
-        setCallDuration(Math.floor((now - start) / 1000));
+        setCallDuration(Math.floor((new Date().getTime() - new Date(callState.startTime!).getTime()) / 1000));
       }, 1000);
-
       return () => clearInterval(interval);
     }
   }, [callState.isActive, callState.startTime]);
@@ -66,170 +56,74 @@ export function CallInterface({
   };
 
   const handleToggleVideo = () => {
-    setIsVideoEnabled(!isVideoEnabled);
     onToggleVideo();
+    setIsVideoEnabled(prev => !prev);
   };
 
   const handleToggleAudio = () => {
-    setIsAudioEnabled(!isAudioEnabled);
     onToggleAudio();
+    setIsAudioEnabled(prev => !prev);
   };
 
-  const remoteUser = callState.participants.find(p => p.id !== 'current-user');
-
-  if (!callState.isActive) return null;
+  const remoteUsers = callState.participants.slice(1); // Kendimiz hariç diğerleri
 
   return (
-    <div className={cn(
-      "fixed inset-0 bg-black z-50 flex flex-col",
-      isMinimized && "bottom-4 right-4 top-auto left-auto w-80 h-60 rounded-lg overflow-hidden shadow-2xl"
-    )}>
+    <div className="fixed inset-0 bg-gray-900 z-50 flex flex-col text-white">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 bg-black/50 text-white">
-        <div className="flex items-center gap-3">
-          {remoteUser && (
-            <>
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={remoteUser.avatar} />
-                <AvatarFallback>{remoteUser.name[0]}</AvatarFallback>
-              </Avatar>
-              <div>
-                <h3 className="font-semibold">{remoteUser.name}</h3>
-                <p className="text-sm text-gray-300">
-                  {isConnecting ? 'Bağlanıyor...' : 
-                   connectionState === 'connected' ? formatDuration(callDuration) :
-                   connectionState === 'connecting' ? 'Bağlanıyor...' :
-                   'Çağrı devam ediyor'}
-                </p>
-              </div>
-            </>
+      <div className="flex items-center justify-between p-4 bg-black/30">
+        <div>
+          <h3 className="font-semibold">Aramada</h3>
+          <p className="text-sm text-gray-300">{formatDuration(callDuration)}</p>
+        </div>
+      </div>
+
+      {/* Ana Video Alanı */}
+      <div className="flex-1 relative">
+        {/* Uzaktaki kullanıcıların videolarının ekleneceği konteyner */}
+        <div 
+          ref={remoteVideoContainerRef}
+          className="w-full h-full grid grid-cols-1 md:grid-cols-2 gap-4 p-4 place-items-center"
+        >
+          {/* Bu alan useAgora hook'u tarafından dinamik olarak doldurulacak */}
+          {remoteUsers.length === 0 && (
+            <div className="text-center text-gray-400">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
+              <p>Diğer katılımcılar bekleniyor...</p>
+            </div>
           )}
         </div>
-        
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsMinimized(!isMinimized)}
-            className="text-white hover:bg-white/20"
-          >
-            {isMinimized ? <Maximize2 className="h-5 w-5" /> : <Minimize2 className="h-5 w-5" />}
-          </Button>
+
+        {/* Kendi Videomuz (Picture-in-Picture) */}
+        <div className="absolute top-4 right-4 w-32 h-24 md:w-48 md:h-36 bg-black rounded-lg overflow-hidden border-2 border-white/20 shadow-lg">
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-full h-full object-cover transform -scale-x-100"
+          />
         </div>
       </div>
 
-      {/* Video Area */}
-      <div className="flex-1 relative bg-gray-900">
-        {callState.type === 'video' ? (
-          <>
-            {/* Remote Video (Main) */}
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-              style={{ transform: 'scaleX(-1)' }} // Mirror effect
-            />
-            
-            {/* Local Video (Picture-in-Picture) */}
-            <div className="absolute top-4 right-4 w-32 h-24 bg-gray-800 rounded-lg overflow-hidden border-2 border-white/20">
-              <video
-                ref={localVideoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-                style={{ transform: 'scaleX(-1)' }} // Mirror effect
-              />
-            </div>
-          </>
-        ) : (
-          /* Voice Call UI */
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center text-white">
-              {remoteUser && (
-                <>
-                  <Avatar className="h-32 w-32 mx-auto mb-6">
-                    <AvatarImage src={remoteUser.avatar} />
-                    <AvatarFallback className="text-4xl">{remoteUser.name[0]}</AvatarFallback>
-                  </Avatar>
-                  <h2 className="text-2xl font-semibold mb-2">{remoteUser.name}</h2>
-                  <p className="text-gray-300">
-                    {isConnecting ? 'Bağlanıyor...' : formatDuration(callDuration)}
-                  </p>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Connection Status Overlay */}
-        {(isConnecting || connectionState !== 'connected') && (
-          <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-            <div className="text-center text-white">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white mx-auto mb-4"></div>
-              <p className="text-lg">
-                {connectionState === 'connecting' ? 'Bağlanıyor...' :
-                 connectionState === 'disconnected' ? 'Yeniden bağlanıyor...' :
-                 'Bağlantı kuruluyor...'}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Controls */}
-      <div className="p-6 bg-black/80">
+      {/* Kontroller */}
+      <div className="p-4 bg-black/50">
         <div className="flex items-center justify-center gap-4">
-          {/* Audio Toggle */}
-          <Button
-            variant={isAudioEnabled ? "secondary" : "destructive"}
-            size="icon"
-            className="h-12 w-12 rounded-full"
-            onClick={handleToggleAudio}
-          >
-            {isAudioEnabled ? <Mic className="h-5 w-5" /> : <MicOff className="h-5 w-5" />}
+          <Button variant={isAudioEnabled ? "secondary" : "destructive"} size="icon" className="h-14 w-14 rounded-full" onClick={handleToggleAudio}>
+            {isAudioEnabled ? <Mic /> : <MicOff />}
           </Button>
-
-          {/* Video Toggle (only for video calls) */}
+          
           {callState.type === 'video' && (
-            <Button
-              variant={isVideoEnabled ? "secondary" : "destructive"}
-              size="icon"
-              className="h-12 w-12 rounded-full"
-              onClick={handleToggleVideo}
-            >
-              {isVideoEnabled ? <Video className="h-5 w-5" /> : <VideoOff className="h-5 w-5" />}
+            <Button variant={isVideoEnabled ? "secondary" : "destructive"} size="icon" className="h-14 w-14 rounded-full" onClick={handleToggleVideo}>
+              {isVideoEnabled ? <Video /> : <VideoOff />}
             </Button>
           )}
 
-          {/* Screen Share */}
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-12 w-12 rounded-full"
-            onClick={onStartScreenShare}
-          >
-            <Monitor className="h-5 w-5" />
+          <Button variant="secondary" size="icon" className="h-14 w-14 rounded-full" onClick={onStartScreenShare}>
+            <Monitor />
           </Button>
 
-          {/* Settings */}
-          <Button
-            variant="secondary"
-            size="icon"
-            className="h-12 w-12 rounded-full"
-          >
-            <Settings className="h-5 w-5" />
-          </Button>
-
-          {/* End Call */}
-          <Button
-            variant="destructive"
-            size="icon"
-            className="h-12 w-12 rounded-full bg-red-500 hover:bg-red-600"
-            onClick={onEndCall}
-          >
-            <PhoneOff className="h-5 w-5" />
+          <Button variant="destructive" size="icon" className="h-16 w-16 rounded-full" onClick={onEndCall}>
+            <PhoneOff className="h-8 w-8"/>
           </Button>
         </div>
       </div>
